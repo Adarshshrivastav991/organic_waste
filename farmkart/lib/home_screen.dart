@@ -9,36 +9,10 @@ import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'auth_service.dart'; // Assuming this file exists
 import 'marketplace_screen.dart'; // Assuming this file exists and contains MarketplaceScreen
-import 'schedule_pickup_screen.dart'; // Assuming this file exists
+import 'schedule_pickup_screen.dart';
+import 'nearby_market_screen.dart';
 
-// --- Placeholder for NearBy Store Screen ---
-// Replace this with your actual NearBy Store screen widget
-class NearByStoreScreen extends StatelessWidget {
-  const NearByStoreScreen({Key? key}) : super(key: key);
 
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.location_on, size: 80, color: Colors.blueGrey),
-          SizedBox(height: 16),
-          Text(
-            'NearBy Store Screen Placeholder',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Implement your store locator/list here',
-            style: TextStyle(fontSize: 16, color: Colors.blueGrey),
-          ),
-        ],
-      ),
-    );
-  }
-}
-// -------------------------------------------
 
 
 class HomeScreen extends StatefulWidget {
@@ -407,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
         bodyContent = const MarketplaceScreen(); // Display Marketplace screen
         break;
       case 2:
-        bodyContent = const NearByStoreScreen(); // Display NearBy Store screen
+        bodyContent = const NearByMarketScreen(); // Display NearBy Store screen
         break;
       default:
       // Fallback to classification screen if index is unexpected
