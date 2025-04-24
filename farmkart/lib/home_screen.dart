@@ -7,13 +7,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:provider/provider.dart';
-import 'auth_service.dart'; // Assuming this file exists
-import 'marketplace_screen.dart'; // Assuming this file exists and contains MarketplaceScreen
+import 'auth_service.dart';
+import 'marketplace_screen.dart';
 import 'schedule_pickup_screen.dart';
 import 'nearby_market_screen.dart';
-
-
-
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final User user;
@@ -33,15 +31,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _explanation;
   String? _disposalInstructions;
   List<Map<String, dynamic>> _history = [];
-  // IMPORTANT: Securely manage API keys. This is for demonstration.
   final String _geminiApiKey = '866134594150';
-
-  int _selectedIndex = 0; // 0: Classify, 1: Marketplace, 2: NearBy Store
+  int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    // Load history only if the user is authenticated (which is handled by the HomeScreen constructor requirement)
     _loadHistory();
   }
 
@@ -52,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .doc(widget.user.uid)
           .collection('classifications')
           .orderBy('timestamp', descending: true)
-          .limit(5) // Limit to last 5 scans
+          .limit(5)
           .get();
 
       setState(() {
@@ -60,7 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (e) {
       print('Error loading history: $e');
-      // Optionally show a SnackBar for the user
     }
   }
 
@@ -69,13 +63,12 @@ class _HomeScreenState extends State<HomeScreen> {
       source: source,
       maxWidth: 800,
       maxHeight: 800,
-      imageQuality: 85, // Compress image quality slightly
+      imageQuality: 85,
     );
 
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
-        // Clear previous results when a new image is picked
         _classificationResult = null;
         _confidence = null;
         _explanation = null;
@@ -89,27 +82,23 @@ class _HomeScreenState extends State<HomeScreen> {
       final imageBytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(imageBytes);
 
-      // Updated prompt for better clarity and JSON strictness
       const prompt = """
       Analyze the waste item image and provide a JSON response.
       Strictly follow the JSON format below. Do not include any other text.
 
       JSON Format:
       {
-        "is_compostable": boolean, // true if compostable, false otherwise (strict criteria: food waste, yard trimmings, uncoated paper, natural fibers ONLY)
-        "confidence": string, // High/Medium/Low based on image clarity and item
-        "category": string, // Compostable/Recyclable/Landfill/Hazardous (determine based on common waste streams)
-        "explanation": string, // Detailed technical reasoning for the classification
-        "disposal": string, // Specific, clear disposal instructions for the item
-        "misconceptions": string // Common mistakes or related facts about disposing this item
+        "is_compostable": boolean,
+        "confidence": string,
+        "category": string,
+        "explanation": string,
+        "disposal": string,
+        "misconceptions": string
       }
-
-      Consider common recycling and composting guidelines. Be conservative with "Compostable" and "Recyclable" classifications if unsure.
 
       Return ONLY the JSON object.
       """;
 
-      // Using the correct endpoint for Gemini Pro Vision
       final url = Uri.parse(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$_geminiApiKey');
 
@@ -122,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
               {"text": prompt},
               {
                 "inlineData": {
-                  "mimeType": "image/jpeg", // Assuming JPEG, adjust if using other formats
+                  "mimeType": "image/jpeg",
                   "data": base64Image
                 }
               }
@@ -130,10 +119,10 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         ],
         "generationConfig": {
-          "temperature": 0.2, // Slightly more relaxed temperature
+          "temperature": 0.2,
           "topP": 0.8,
           "topK": 40,
-          "maxOutputTokens": 1500 // Allow more tokens for detailed explanation/instructions
+          "maxOutputTokens": 1500
         }
       };
 
@@ -145,13 +134,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        // Accessing the text part of the response
         final text = responseData['candidates'][0]['content']['parts'][0]['text'];
 
         try {
-          // Attempt to decode the text as JSON
           final jsonResponse = jsonDecode(text);
-          // Validate if expected keys exist (basic validation)
           if (jsonResponse.containsKey('is_compostable') &&
               jsonResponse.containsKey('category') &&
               jsonResponse.containsKey('confidence') &&
@@ -159,32 +145,20 @@ class _HomeScreenState extends State<HomeScreen> {
               jsonResponse.containsKey('disposal')) {
             return jsonResponse;
           } else {
-            // If JSON is malformed or missing keys, fall back to text parsing
-            print('Warning: API returned JSON but missing keys. Falling back to text parsing.');
-            print('Raw API Text Response: $text'); // Log the raw text
             return _parsePlainTextResponse(text);
           }
-
         } catch (e) {
-          // If decoding as JSON fails, try parsing as plain text
-          print('Warning: API response was not valid JSON. Attempting plain text parse. Error: $e');
-          print('Raw API Text Response: $text'); // Log the raw text
           return _parsePlainTextResponse(text);
         }
       } else {
-        print('API Error Status: ${response.statusCode}');
-        print('API Error Body: ${response.body}');
         throw Exception('API request failed with status ${response.statusCode}');
       }
     } catch (e) {
-      print('Error calling Gemini API: $e');
       throw Exception('Failed to call Gemini API: $e');
     }
   }
 
-  // Fallback parser if API doesn't return strict JSON
   Map<String, dynamic> _parsePlainTextResponse(String text) {
-    // Basic fallback - improve this if your API frequently deviates
     final result = {
       'is_compostable': false,
       'confidence': 'Unknown',
@@ -196,14 +170,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final lowerText = text.toLowerCase();
 
-    // Attempt to find key indicators in a simple way
     if (lowerText.contains('compostable')) {
-      // Be cautious: only mark as compostable if explicitly confirmed
       result['is_compostable'] = (lowerText.contains('"is_compostable": true') ||
           lowerText.contains('is_compostable: true') ||
           lowerText.contains('category: compostable') ||
           lowerText.contains('result: compostable')) &&
-          !lowerText.contains('not compostable'); // Ensure it's not negated
+          !lowerText.contains('not compostable');
       if (result['is_compostable'] == true) {
         result['category'] = 'Compostable';
       }
@@ -212,11 +184,9 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (lowerText.contains('hazardous')) {
       result['category'] = 'Hazardous';
     } else {
-      // Default to Landfill if no specific category is found
       result['category'] = 'Landfill';
     }
 
-    // Extract confidence (simple keyword search)
     if (lowerText.contains('confidence: high') || lowerText.contains('"confidence": "high"')) {
       result['confidence'] = 'High';
     } else if (lowerText.contains('confidence: medium') || lowerText.contains('"confidence": "medium"')) {
@@ -224,84 +194,40 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (lowerText.contains('confidence: low') || lowerText.contains('"confidence": "low"')) {
       result['confidence'] = 'Low';
     } else if (result['is_compostable'] == true || result['category'] != 'Landfill') {
-      // Assume at least medium confidence if it's classified as something other than unknown/landfill
       result['confidence'] = 'Medium';
     } else {
-      result['confidence'] = 'Low'; // Low confidence if it defaults to landfill and no confidence is specified
+      result['confidence'] = 'Low';
     }
 
-
-    // Attempt to extract explanations and disposal (very basic, might need refinement)
-    try {
-      RegExp expReg = RegExp(r'(explanation|analysis):\s*(.*?)(disposal:|misconceptions:|$)', dotAll: true);
-      var matchExp = expReg.firstMatch(lowerText);
-      if (matchExp != null && matchExp.group(2) != null) {
-        result['explanation'] = matchExp.group(2)!.trim();
-      }
-
-      RegExp disposalReg = RegExp(r'(disposal instructions|disposal):\s*(.*?)(explanation:|misconceptions:|$)', dotAll: true);
-      var matchDisposal = disposalReg.firstMatch(lowerText);
-      if (matchDisposal != null && matchDisposal.group(2) != null) {
-        result['disposal'] = matchDisposal.group(2)!.trim();
-      }
-
-      RegExp misconceptionsReg = RegExp(r'(misconceptions):\s*(.*?)(explanation:|disposal:|$)', dotAll: true);
-      var matchMisconceptions = misconceptionsReg.firstMatch(lowerText);
-      if (matchMisconceptions != null && matchMisconceptions.group(2) != null) {
-        result['misconceptions'] = matchMisconceptions.group(2)!.trim();
-      }
-
-    } catch (e) {
-      print('Error parsing specific fields from plain text: $e');
-      // Keep default 'Could not parse...' messages
-    }
-
-
-    print('Parsed Plain Text Result: $result'); // Log the parsed result
     return result;
   }
-
 
   Future<void> _classifyImage() async {
     if (_image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select an image first.'),
-          duration: Duration(seconds: 2),
-        ),
+        const SnackBar(content: Text('Please select an image first.')),
       );
-      return; // Don't proceed if no image is selected
+      return;
     }
 
     setState(() {
       _isLoading = true;
-      _classificationResult = null; // Clear previous results
+      _classificationResult = null;
       _confidence = null;
       _explanation = null;
       _disposalInstructions = null;
     });
 
     try {
-      // 1. Upload image to Firebase Storage
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('user_images/${widget.user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
 
-      final uploadTask = storageRef.putFile(_image!);
-
-      // Optional: Listen to upload progress
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        print('Upload progress: ${snapshot.bytesTransferred / snapshot.totalBytes * 100} %');
-      });
-
-      await uploadTask; // Wait for upload to complete
+      await storageRef.putFile(_image!);
       final imageUrl = await storageRef.getDownloadURL();
 
-      // 2. Call Gemini API
       final result = await _callGeminiAPI(_image!);
-      print('API Classification Result: $result'); // Log the result received
 
-      // 3. Save result to Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.user.uid)
@@ -317,38 +243,25 @@ class _HomeScreenState extends State<HomeScreen> {
         'timestamp': FieldValue.serverTimestamp(),
       });
 
-      // 4. Update UI state
       setState(() {
-        // Use the category from the result, defaulting if needed
         final category = result['category'] ?? 'Unknown';
-        _classificationResult = category.toUpperCase(); // Display category
-
-        // Also show if it's compostable specifically if category is Compostable
+        _classificationResult = category.toUpperCase();
         if (result['is_compostable'] == true && _classificationResult != 'COMPOSTABLE') {
           _classificationResult = 'COMPOSTABLE ($category)';
         } else if (result['is_compostable'] == false && _classificationResult == 'COMPOSTABLE') {
-          // Edge case: API says compostable is false but category is compostable
           _classificationResult = 'NOT COMPOSTABLE ($category)';
         }
-
-
         _confidence = result['confidence'] ?? 'Unknown';
         _explanation = result['explanation'] ?? 'No detailed analysis provided.';
         _disposalInstructions = result['disposal'] ?? 'Disposal information not available.';
         _isLoading = false;
       });
 
-      // 5. Reload history to show the new scan
       _loadHistory();
-
     } catch (e) {
-      print('Classification Error: $e');
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Classification failed: ${e.toString()}'),
-          duration: const Duration(seconds: 5),
-        ),
+        SnackBar(content: Text('Classification failed: ${e.toString()}')),
       );
     }
   }
@@ -359,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (resultLower.contains('compostable')) return Colors.green;
     if (resultLower.contains('recyclable')) return Colors.blue;
     if (resultLower.contains('hazardous')) return Colors.deepOrange;
-    return Colors.red; // Default for Landfill or Unknown
+    return Colors.red;
   }
 
   void _onItemTapped(int index) {
@@ -372,19 +285,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     Widget bodyContent;
 
-    // Use a switch statement to determine the body content based on the selected index
     switch (_selectedIndex) {
       case 0:
         bodyContent = _buildClassificationContent();
         break;
       case 1:
-        bodyContent = const MarketplaceScreen(); // Display Marketplace screen
+        bodyContent = const MarketplaceScreen();
         break;
       case 2:
-        bodyContent = const NearByMarketScreen(); // Display NearBy Store screen
+        bodyContent = const NearByMarketScreen();
         break;
       default:
-      // Fallback to classification screen if index is unexpected
         bodyContent = _buildClassificationContent();
     }
 
@@ -393,15 +304,25 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('EcoSort AI'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(user: widget.user),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              // Ensure you have an AuthService provided higher up in your widget tree
               await Provider.of<AuthService>(context, listen: false).signOut();
             },
           ),
         ],
       ),
-      body: bodyContent, // The body content is now dynamic
+      body: bodyContent,
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
@@ -419,9 +340,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.green,
-        unselectedItemColor: Colors.grey, // Add unselected color for clarity
+        unselectedItemColor: Colors.grey,
         onTap: _onItemTapped,
-        // Optional: Adjust type based on number of items
         type: BottomNavigationBarType.fixed,
       ),
     );
@@ -492,15 +412,15 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _isLoading ? null : _classifyImage,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
-                foregroundColor: Colors.white, // Text color
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 5, // Add elevation
+                elevation: 5,
               ),
               child: _isLoading
-                  ? const SizedBox( // Use SizedBox to constrain the indicator size
+                  ? const SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
@@ -512,7 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
-          if (_classificationResult != null && !_isLoading) ...[ // Only show results when not loading
+          if (_classificationResult != null && !_isLoading) ...[
             const SizedBox(height: 30),
             Container(
               padding: const EdgeInsets.all(20),
@@ -537,16 +457,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? Icons.recycling
                             : _classificationResult!.toLowerCase().contains('hazardous')
                             ? Icons.warning
-                            : Icons.delete_sweep, // Icon for Landfill/Unknown
+                            : Icons.delete_sweep,
                         color: _getResultColor(),
                         size: 30,
                       ),
                       const SizedBox(width: 10),
-                      Expanded( // Use Expanded to prevent overflow
+                      Expanded(
                         child: Text(
                           _classificationResult!,
                           style: TextStyle(
-                            fontSize: 24, // Slightly smaller font for better fit
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
                             color: _getResultColor(),
                           ),
@@ -598,26 +518,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ],
-                  // Optionally display misconceptions if available
-                  // if (item['misconceptions'] != null && item['misconceptions'] != 'No common misconceptions noted.') ...[
-                  //    const SizedBox(height: 8),
-                  //     const Text(
-                  //       'Common Misconceptions:',
-                  //       style: TextStyle(
-                  //         fontSize: 14,
-                  //         fontWeight: FontWeight.bold,
-                  //       ),
-                  //     ),
-                  //     Text(
-                  //       item['misconceptions'],
-                  //       style: const TextStyle(fontSize: 13),
-                  //     ),
-                  //  ],
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            // Button to Schedule Pickup
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -625,9 +529,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   MaterialPageRoute(
                     builder: (context) => SchedulePickupScreen(
                       user: widget.user,
-                      // Pass the actual category, not just COMPOSTABLE/NOT COMPOSTABLE
-                      wasteType: _classificationResult!.replaceAll('COMPOSTABLE (', '').replaceAll(')', ''), // Simple way to get category
-                      amountKg: 1.0, // Default or allow user input?
+                      wasteType: _classificationResult!.replaceAll('COMPOSTABLE (', '').replaceAll(')', ''),
+                      amountKg: 1.0,
                     ),
                   ),
                 );
@@ -648,23 +551,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 30), // Add space below results or buttons
+          const SizedBox(height: 30),
           if (_history.isNotEmpty) ...[
-            const Divider(), // Add a divider before history
+            const Divider(),
             const SizedBox(height: 10),
             const Text(
               'RECENT SCANS',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.black87, // Use a darker color
+                color: Colors.black87,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             ..._history.map((item) {
               final String category = item['category'] ?? 'Unknown';
-              final bool isCompostable = item['is_compostable'] == true; // Use the boolean flag
+              final bool isCompostable = item['is_compostable'] == true;
               final Color itemColor = isCompostable ? Colors.green : (category == 'Recyclable' ? Colors.blue : (category == 'Hazardous' ? Colors.deepOrange : Colors.red));
 
               return Card(
@@ -672,7 +575,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 3, // Add card elevation
+                elevation: 3,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -687,22 +590,22 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 120,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.broken_image, size: 100, color: Colors.grey), // Show error icon if image fails to load
+                            const Icon(Icons.broken_image, size: 100, color: Colors.grey),
                           ),
                         ),
                       const SizedBox(height: 10),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start, // Align items at the top
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(
                             isCompostable ? Icons.eco : (category == 'Recyclable' ? Icons.recycling : (category == 'Hazardous' ? Icons.warning : Icons.delete_sweep)),
                             color: itemColor,
-                            size: 20, // Smaller icon in history
+                            size: 20,
                           ),
                           const SizedBox(width: 8),
-                          Expanded( // Use Expanded for the category text
+                          Expanded(
                             child: Text(
-                              category.toUpperCase(), // Display category prominently
+                              category.toUpperCase(),
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -710,19 +613,19 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8), // Space between category and confidence
+                          const SizedBox(width: 8),
                           if (item['confidence'] != null && item['confidence'] != 'Unknown')
                             Text(
                               item['confidence'],
                               style: TextStyle(
                                 color: Colors.grey.shade600,
-                                fontWeight: FontWeight.w600, // Slightly bolder
+                                fontWeight: FontWeight.w600,
                                 fontSize: 14,
                               ),
                             ),
                         ],
                       ),
-                      if (isCompostable && category != 'Compostable') // Indicate if it's compostable based on flag but category is different
+                      if (isCompostable && category != 'Compostable')
                         Padding(
                           padding: const EdgeInsets.only(top: 4.0),
                           child: Text(
@@ -730,7 +633,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.green.shade700),
                           ),
                         ),
-
                       if (item['explanation'] != null && item['explanation'] != 'No detailed analysis provided.') ...[
                         const SizedBox(height: 8),
                         const Text(
@@ -743,8 +645,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         Text(
                           item['explanation'],
-                          style: const TextStyle(fontSize: 14, color: Colors.black54), // Use a slightly lighter color
-                          maxLines: 3, // Allow up to 3 lines
+                          style: const TextStyle(fontSize: 14, color: Colors.black54),
+                          maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
@@ -761,34 +663,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         Text(
                           item['instructions'],
                           style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
-                          maxLines: 2, // Allow up to 2 lines
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                      // Optionally display misconceptions in history
-                      // if (item['misconceptions'] != null && item['misconceptions'] != 'No common misconceptions noted.') ...[
-                      //    const SizedBox(height: 8),
-                      //     const Text(
-                      //       'Misconceptions:',
-                      //       style: TextStyle(
-                      //         fontSize: 14,
-                      //         fontWeight: FontWeight.bold,
-                      //       ),
-                      //     ),
-                      //     Text(
-                      //       item['misconceptions'],
-                      //       style: const TextStyle(fontSize: 13),
-                      //       maxLines: 2,
-                      //       overflow: TextOverflow.ellipsis,
-                      //     ),
-                      //  ],
                     ],
                   ),
                 ),
               );
             }).toList(),
           ],
-          if (_image == null && _history.isEmpty) // Message when no image picked and no history
+          if (_image == null && _history.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32.0),
               child: Center(
