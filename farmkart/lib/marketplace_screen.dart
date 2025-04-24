@@ -141,4 +141,5 @@ class _MarketplaceViewState extends State<MarketplaceView> {
     // The stream will automatically update the products
     // No need for manual refresh
   }
+
 }
