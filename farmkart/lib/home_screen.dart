@@ -291,6 +291,10 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.shopping_cart),
             label: 'Marketplace',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.location_on),
+            label: 'NearBy Store',
+          ),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.green,
