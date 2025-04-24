@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.farmkart"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.11718014"
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
