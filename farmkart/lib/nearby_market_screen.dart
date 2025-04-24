@@ -24,47 +24,27 @@ class _NearByMarketScreenState extends State<NearByMarketScreen> {
     _fetchLocationAndProducts();
   }
 
+  // In NearByMarketScreen's _fetchLocationAndProducts
   Future<void> _fetchLocationAndProducts() async {
-    final hasPermission = await _handlePermission();
-    if (!hasPermission) return;
-
-    final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    setState(() {
-      _currentPosition = position;
-    });
-
-    final snapshot = await FirebaseFirestore.instance.collection('products').get();
-
-    final filtered = snapshot.docs.map((doc) {
-      final data = doc.data();
-      final lat = data['latitude'];
-      final lon = data['longitude'];
-
-      if (lat == null || lon == null) return null;
-
-      final distance = _calculateDistance(
-        position.latitude,
-        position.longitude,
-        lat,
-        lon,
-      );
-
-      if (distance <= searchRadiusKm) {
-        return {
-          'id': doc.id,
-          ...data,
-          'distance': distance,
-        };
+    try {
+      final hasPermission = await _handlePermission();
+      if (!hasPermission) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission required'))
+        );
+        return;
       }
-      return null;
-    }).where((e) => e != null).toList();
 
-    filtered.sort((a, b) => a!['distance'].compareTo(b!['distance']));
+      final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high
+      ).timeout(const Duration(seconds: 10));
 
-    setState(() {
-      _nearbyProducts = filtered.cast<Map<String, dynamic>>();
-      _markers = _createMarkers(_nearbyProducts);
-    });
+      // Rest of the code...
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}'))
+      );
+    }
   }
 
   Set<Marker> _createMarkers(List<Map<String, dynamic>> products) {
