@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -93,7 +92,6 @@ class MarketplaceProvider extends ChangeNotifier {
           .collection('products')
           .add(productData);
 
-      // The stream will automatically update the products
       errorMessage = null;
     } catch (e) {
       errorMessage = 'Failed to add product: $e';
@@ -134,9 +132,9 @@ class MarketplaceProvider extends ChangeNotifier {
       final priceMatch = (priceRange ?? this.priceRange).start <= product.pricePerKg &&
           product.pricePerKg <= (priceRange ?? this.priceRange).end;
 
-      // Availability filter
+      // Availability filter (using availableQuantity > 0 as availability check)
       final availabilityMatch = (availability ?? availabilityFilter)
-          ? product.isAvailable
+          ? product.availableQuantity > 0
           : true;
 
       return typeMatch && priceMatch && availabilityMatch;
@@ -161,33 +159,25 @@ class CompostProduct {
   final String id;
   final String name;
   final String type;
-  final String description;
   final double pricePerKg;
-  final String sellerId;
+  final double availableQuantity;
+  final String description;
+  final String imageUrl;
   final String sellerName;
   final String sellerEmail;
-  final String imageUrl;
-  final String? imagePath;
-  final int availableQuantity;
-  final bool isAvailable;
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
+  final String sellerPhone;
 
   CompostProduct({
     required this.id,
     required this.name,
     required this.type,
-    required this.description,
     required this.pricePerKg,
-    required this.sellerId,
+    required this.availableQuantity,
+    required this.description,
+    required this.imageUrl,
     required this.sellerName,
     required this.sellerEmail,
-    required this.imageUrl,
-    this.imagePath,
-    required this.availableQuantity,
-    required this.isAvailable,
-    this.createdAt,
-    this.updatedAt,
+    required this.sellerPhone,
   });
 
   factory CompostProduct.fromFirestore(DocumentSnapshot doc) {
@@ -196,17 +186,13 @@ class CompostProduct {
       id: doc.id,
       name: data['name'] ?? 'Unnamed Product',
       type: data['type'] ?? 'General',
-      description: data['description'] ?? '',
       pricePerKg: (data['pricePerKg'] ?? 0).toDouble(),
-      sellerId: data['sellerId'] ?? '',
+      availableQuantity: (data['availableQuantity'] ?? 0).toDouble(),
+      description: data['description'] ?? '',
+      imageUrl: data['imageUrl'] ?? '',
       sellerName: data['sellerName'] ?? 'Unknown Seller',
       sellerEmail: data['sellerEmail'] ?? '',
-      imageUrl: data['imageUrl'] ?? '',
-      imagePath: data['imagePath'],
-      availableQuantity: (data['availableQuantity'] ?? 0).toInt(),
-      isAvailable: data['isAvailable'] ?? true,
-      createdAt: data['createdAt']?.toDate(),
-      updatedAt: data['updatedAt']?.toDate(),
+      sellerPhone: data['sellerPhone'] ?? '',
     );
   }
 
@@ -214,17 +200,14 @@ class CompostProduct {
     return {
       'name': name,
       'type': type,
-      'description': description,
       'pricePerKg': pricePerKg,
-      'sellerId': sellerId,
+      'availableQuantity': availableQuantity,
+      'description': description,
+      'imageUrl': imageUrl,
       'sellerName': sellerName,
       'sellerEmail': sellerEmail,
-      'imageUrl': imageUrl,
-      'imagePath': imagePath,
-      'availableQuantity': availableQuantity,
-      'isAvailable': isAvailable,
-      'createdAt': createdAt,
-      'updatedAt': updatedAt,
+      'sellerPhone': sellerPhone,
+      'createdAt': FieldValue.serverTimestamp(),
     };
   }
 }

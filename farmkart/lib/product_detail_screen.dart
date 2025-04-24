@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'marketplace_provider.dart';
 
 class ProductDetailScreen extends StatelessWidget {
@@ -47,6 +47,20 @@ class ProductDetailScreen extends StatelessWidget {
               'Seller: ${product.sellerName}',
               style: Theme.of(context).textTheme.titleMedium,
             ),
+            if (product.sellerEmail.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Email: ${product.sellerEmail}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+            if (product.sellerPhone.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Phone: ${product.sellerPhone}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
             const SizedBox(height: 16),
             Text(
               'Description',
@@ -59,24 +73,54 @@ class ProductDetailScreen extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.message),
-                label: const Text('Contact Seller'),
-                onPressed: () => _contactSeller(context),
+            if (product.sellerPhone.isNotEmpty || product.sellerEmail.isNotEmpty)
+              Row(
+                children: [
+                  if (product.sellerPhone.isNotEmpty)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.phone),
+                        label: const Text('Call'),
+                        onPressed: () => _callSeller(context),
+                      ),
+                    ),
+                  if (product.sellerPhone.isNotEmpty && product.sellerEmail.isNotEmpty)
+                    const SizedBox(width: 8),
+                  if (product.sellerEmail.isNotEmpty)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.email),
+                        label: const Text('Email'),
+                        onPressed: () => _emailSeller(context),
+                      ),
+                    ),
+                ],
               ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  void _contactSeller(BuildContext context) {
-    // Implement messaging functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Messaging feature coming soon!')),
-    );
+  Future<void> _callSeller(BuildContext context) async {
+    final phoneUrl = Uri.parse('tel:${product.sellerPhone}');
+    if (await canLaunchUrl(phoneUrl)) {
+      await launchUrl(phoneUrl);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not launch phone app')),
+      );
+    }
+  }
+
+  Future<void> _emailSeller(BuildContext context) async {
+    final emailUrl = Uri.parse('mailto:${product.sellerEmail}');
+    if (await canLaunchUrl(emailUrl)) {
+      await launchUrl(emailUrl);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not launch email app')),
+      );
+    }
   }
 }
