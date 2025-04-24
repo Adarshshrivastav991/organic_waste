@@ -33,11 +33,15 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _history = [];
   final String _geminiApiKey = '866134594150';
   int _selectedIndex = 0;
+  int _userPoints = 0;
+  final RewardsSystem _rewardsSystem = RewardsSystem();
+  final TransactionsService _transactionsService = TransactionsService();
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _loadUserPoints();
   }
 
   Future<void> _loadHistory() async {
@@ -56,6 +60,13 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print('Error loading history: $e');
     }
+  }
+
+  Future<void> _loadUserPoints() async {
+    final points = await _rewardsSystem.getPoints(widget.user.uid);
+    setState(() {
+      _userPoints = points;
+    });
   }
 
   Future<void> _getImage(ImageSource source) async {
@@ -243,6 +254,10 @@ class _HomeScreenState extends State<HomeScreen> {
         'timestamp': FieldValue.serverTimestamp(),
       });
 
+      // Add reward points after successful classification
+      await _rewardsSystem.addPoints(widget.user.uid, 10);
+      _loadUserPoints();
+
       setState(() {
         final category = result['category'] ?? 'Unknown';
         _classificationResult = category.toUpperCase();
@@ -281,6 +296,81 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Widget _buildPointsBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.green[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.star, color: Colors.amber, size: 16),
+          const SizedBox(width: 4),
+          Text(
+            '$_userPoints pts',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRewardsDialog(BuildContext context) async {
+    return showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Claim Your Rewards'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Choose how to use your points:'),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.card_giftcard),
+                title: const Text('100 pts = \$1 discount'),
+                onTap: () => _claimReward(100, 1.0),
+              ),
+              ListTile(
+                leading: const Icon(Icons.local_offer),
+                title: const Text('250 pts = \$3 discount'),
+                onTap: () => _claimReward(250, 3.0),
+              ),
+              ListTile(
+                leading: const Icon(Icons.attach_money),
+                title: const Text('500 pts = \$7 discount'),
+                onTap: () => _claimReward(500, 7.0),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _claimReward(int points, double value) async {
+    if (_userPoints >= points) {
+      try {
+        await _rewardsSystem.claimReward(widget.user.uid, points);
+        await _transactionsService.initiatePayment(widget.user.uid, value, points);
+        _loadUserPoints();
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Successfully claimed reward of \$$value!')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error claiming reward: ${e.toString()}')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough points for this reward')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget bodyContent;
@@ -303,6 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('EcoSort AI'),
         actions: [
+          _buildPointsBadge(),
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () {
@@ -552,6 +643,32 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
           const SizedBox(height: 30),
+          if (_userPoints > 0) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Your Rewards',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'You have $_userPoints points!',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: () => _showRewardsDialog(context),
+                      child: const Text('Claim Rewards'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           if (_history.isNotEmpty) ...[
             const Divider(),
             const SizedBox(height: 10),
@@ -687,5 +804,54 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+}
+
+class RewardsSystem {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<void> addPoints(String userId, int points) async {
+    await _firestore.collection('users').doc(userId).update({
+      'points': FieldValue.increment(points),
+      'lastEarned': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<int> getPoints(String userId) async {
+    final doc = await _firestore.collection('users').doc(userId).get();
+    return doc.data()?['points'] ?? 0;
+  }
+
+  Future<void> claimReward(String userId, int pointsToClaim) async {
+    await _firestore.collection('users').doc(userId).update({
+      'points': FieldValue.increment(-pointsToClaim),
+      'lastClaimed': FieldValue.serverTimestamp(),
+    });
+
+    await _firestore.collection('users').doc(userId).collection('transactions').add({
+      'type': 'redemption',
+      'points': pointsToClaim,
+      'date': FieldValue.serverTimestamp(),
+      'status': 'pending',
+    });
+  }
+}
+
+class TransactionsService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<void> initiatePayment(String userId, double amount, int pointsUsed) async {
+    await _firestore.collection('users').doc(userId).collection('transactions').add({
+      'amount': amount,
+      'pointsUsed': pointsUsed,
+      'date': FieldValue.serverTimestamp(),
+      'status': 'initiated',
+      'type': 'purchase',
+    });
+  }
+
+  Future<void> updatePaymentStatus(String userId, String transactionId, String status) async {
+    await _firestore.collection('users').doc(userId).collection('transactions')
+        .doc(transactionId).update({'status': status});
   }
 }
