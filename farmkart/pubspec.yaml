@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  firebase_core: ^2.24.0
   firebase_auth: ^4.16.0
   cloud_firestore: ^4.17.5
   firebase_storage: ^11.6.5
@@ -39,8 +41,7 @@ dependencies:
 #  cupertino_icons: ^1.0.8
   google_maps_flutter: ^2.2.3
   geolocator: ^9.0.2
-  flutter_polyline_points: ^1.0.0
-  permission_handler: ^10.4.0
+  cached_network_image: ^3.2.0
   geocoding: ^2.0.5
   intl: ^0.18.1
 

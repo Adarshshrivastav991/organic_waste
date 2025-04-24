@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -11,6 +12,7 @@ import 'auth_service.dart';
 import 'marketplace_screen.dart';
 import 'marketplace_screen.dart' show MarketplaceScreen;
 import 'schedule_pickup_screen.dart';
+
 
 class HomeScreen extends StatefulWidget {
   final User user;
@@ -32,7 +34,181 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _history = [];
   final String _geminiApiKey = 'AIzaSyAf6iaA9g0R0bbqju_UPVA90vw1G4Uld3w';
   int _selectedIndex = 0;
+  File? _profileImage;
 
+  // Profile section methods
+  Future<void> _pickProfileImage() async {
+    try {
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          _profileImage = File(image.path);
+        });
+        // TODO: Upload profile image to Firebase Storage and update user profile
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: ${e.toString()}')),
+      );
+    }
+  }
+
+  Widget _buildProfileHeader() {
+    return Column(
+      children: [
+        Stack(
+          children: [
+            CircleAvatar(
+              radius: 50,
+              backgroundColor: Colors.grey[200],
+              backgroundImage: _profileImage != null
+                  ? FileImage(_profileImage!)
+                  : (widget.user.photoURL != null
+                  ? CachedNetworkImageProvider(widget.user.photoURL!)
+                  : null),
+              child: widget.user.photoURL == null && _profileImage == null
+                  ? const Icon(Icons.person, size: 50, color: Colors.grey)
+                  : null,
+            ),
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                  onPressed: _pickProfileImage,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          widget.user.displayName ?? 'EcoSort User',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        Text(
+          widget.user.email ?? '',
+          style: const TextStyle(color: Colors.grey),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildProfileStatsCard(String title, String value) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileMenuOption(IconData icon, String title, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.green),
+      title: Text(title),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildProfileContent() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildProfileHeader(),
+
+          // User stats
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildProfileStatsCard('Scans', _history.length.toString()),
+              _buildProfileStatsCard('Composted',
+                  _history.where((item) => item['is_compostable'] == true).length.toString()),
+              _buildProfileStatsCard('Points', '150'),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Menu options
+          Card(
+            elevation: 2,
+            child: Column(
+              children: [
+                _buildProfileMenuOption(Icons.history, 'Scan History', () {
+                  // Navigate to full history screen
+                }),
+                const Divider(height: 1),
+                _buildProfileMenuOption(Icons.eco, 'Compost Stats', () {
+                  // Navigate to compost stats
+                }),
+                const Divider(height: 1),
+                _buildProfileMenuOption(Icons.settings, 'Settings', () {
+                  // Navigate to settings
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // More options
+          Card(
+            elevation: 2,
+            child: Column(
+              children: [
+                _buildProfileMenuOption(Icons.help, 'Help Center', () {
+                  // Navigate to help
+                }),
+                const Divider(height: 1),
+                _buildProfileMenuOption(Icons.info, 'About EcoSort', () {
+                  // Navigate to about
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Logout button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                foregroundColor: Colors.red, backgroundColor: Colors.red[100],
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              onPressed: () async {
+                await Provider.of<AuthService>(context, listen: false).signOut();
+              },
+              child: const Text('Logout'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Rest of your existing methods remain exactly the same...
   @override
   void initState() {
     super.initState();
@@ -258,45 +434,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Color _getResultColor() {
     return _classificationResult == 'COMPOSTABLE' ? Colors.green : Colors.red;
-  }
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('EcoSort AI'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await Provider.of<AuthService>(context, listen: false).signOut();
-            },
-          ),
-        ],
-      ),
-      body: _selectedIndex == 0 ? _buildClassificationContent() : const MarketplaceScreen(),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt),
-            label: 'Classify',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: 'Marketplace',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.green,
-        onTap: _onItemTapped,
-      ),
-    );
   }
 
   Widget _buildClassificationContent() {
@@ -572,6 +709,43 @@ class _HomeScreenState extends State<HomeScreen> {
             }).toList(),
           ],
         ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_selectedIndex == 0 ? 'EcoSort AI' : 'My Profile'),
+      ),
+      body: _selectedIndex == 0
+          ? _buildClassificationContent()
+          : _selectedIndex == 1
+          ? const MarketplaceScreen()
+          : _buildProfileContent(),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.camera_alt),
+            label: 'Classify',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Marketplace',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.green,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
       ),
     );
   }
