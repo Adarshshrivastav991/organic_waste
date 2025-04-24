@@ -13,7 +13,6 @@ import 'marketplace_screen.dart';
 import 'marketplace_screen.dart' show MarketplaceScreen;
 import 'schedule_pickup_screen.dart';
 
-
 class HomeScreen extends StatefulWidget {
   final User user;
 
@@ -27,12 +26,9 @@ class _HomeScreenState extends State<HomeScreen> {
   File? _image;
   final picker = ImagePicker();
   bool _isLoading = false;
-  String? _classificationResult;
-  String? _confidence;
-  String? _explanation;
-  String? _disposalInstructions;
+  Map<String, dynamic>? _productAnalysis;
   List<Map<String, dynamic>> _history = [];
-  final String _geminiApiKey = 'AIzaSyAf6iaA9g0R0bbqju_UPVA90vw1G4Uld3w';
+  final String _geminiApiKey = 'AIzaSyCu_GZZiPNpvkt6b6zDlSQn3WtXqWY8Ejg';
   int _selectedIndex = 0;
   File? _profileImage;
 
@@ -145,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildProfileStatsCard('Scans', _history.length.toString()),
               _buildProfileStatsCard('Composted',
-                  _history.where((item) => item['is_compostable'] == true).length.toString()),
+                  _history.where((item) => item['isCompostable'] == true).length.toString()),
               _buildProfileStatsCard('Points', '150'),
             ],
           ),
@@ -208,7 +204,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Rest of your existing methods remain exactly the same...
   @override
   void initState() {
     super.initState();
@@ -220,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.user.uid)
-          .collection('classifications')
+          .collection('product_analyses')
           .orderBy('timestamp', descending: true)
           .limit(5)
           .get();
@@ -244,10 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
-        _classificationResult = null;
-        _confidence = null;
-        _explanation = null;
-        _disposalInstructions = null;
+        _productAnalysis = null;
       });
     }
   }
@@ -258,25 +250,33 @@ class _HomeScreenState extends State<HomeScreen> {
       final base64Image = base64Encode(imageBytes);
 
       const prompt = """
-      Analyze this waste item image and provide a JSON response with these fields:
-      - is_compostable: boolean (true if compostable, false otherwise)
-      - confidence: string (High/Medium/Low)
-      - category: string (Compostable/Recyclable/Landfill/Hazardous)
-      - explanation: string (detailed technical reasoning)
-      - disposal: string (specific disposal instructions)
-      - misconceptions: string (common mistakes about this item)
+      Analyze this compost product image and provide a JSON response with these fields:
+      - name: string (product name)
+      - type: string (Vermicompost/Organic Compost/Manure/Leaf Compost/Bokashi/Other)
+      - qualityRating: number (1-5)
+      - moistureContent: string (Low/Medium/High)
+      - nutrientAnalysis: {
+        nitrogen: string (Low/Medium/High),
+        phosphorus: string (Low/Medium/High),
+        potassium: string (Low/Medium/High)
+      }
+      - organicMatter: string (Low/Medium/High)
+      - phLevel: number (pH value)
+      - contaminants: string (description of any contaminants)
+      - recommendedUse: string (best use cases)
+      - priceEstimate: number (estimated price per kg in local currency)
+      - additionalNotes: string (any other observations)
 
       Guidelines:
-      - Compostable only for: food waste, yard trimmings, uncoated paper, natural fibers
-      - Not Compostable for: plastics, metals, glass, animal products, oily items
-      - Be extremely strict about compostability
-      - Provide clear disposal instructions
+      - Be thorough in your analysis
+      - Provide specific details about compost quality
+      - Estimate price based on quality and local market rates
+      - Identify any potential issues or contaminants
 
       Return ONLY the JSON object, nothing else.
       """;
 
-      final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=$_geminiApiKey');
+      final url = Uri.parse(" https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=$_geminiApiKey ");
 
       final headers = {'Content-Type': 'application/json'};
 
@@ -311,13 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         final text = responseData['candidates'][0]['content']['parts'][0]['text'];
-
-        try {
-          final jsonResponse = jsonDecode(text);
-          return jsonResponse;
-        } catch (e) {
-          return _parsePlainTextResponse(text);
-        }
+        return jsonDecode(text);
       } else {
         throw Exception('API request failed with status ${response.statusCode}');
       }
@@ -326,61 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Map<String, dynamic> _parsePlainTextResponse(String text) {
-    final result = {
-      'is_compostable': false,
-      'confidence': 'Medium',
-      'category': 'Landfill',
-      'explanation': 'No explanation provided',
-      'disposal': 'Dispose properly',
-      'misconceptions': 'None noted'
-    };
-
-    final lines = text.split('\n');
-    for (final line in lines) {
-      final trimmedLine = line.trim().toLowerCase();
-
-      if (trimmedLine.contains('compostable')) {
-        result['is_compostable'] = trimmedLine.contains('yes') ||
-            trimmedLine.contains('true') ||
-            (trimmedLine.contains('compostable') && !trimmedLine.contains('not'));
-      }
-
-      if (trimmedLine.contains('confidence:')) {
-        if (trimmedLine.contains('high')) {
-          result['confidence'] = 'High';
-        } else if (trimmedLine.contains('medium')) {
-          result['confidence'] = 'Medium';
-        } else if (trimmedLine.contains('low')) {
-          result['confidence'] = 'Low';
-        }
-      }
-
-      if (trimmedLine.contains('category:')) {
-        if (trimmedLine.contains('compostable')) {
-          result['category'] = 'Compostable';
-        } else if (trimmedLine.contains('recyclable')) {
-          result['category'] = 'Recyclable';
-        } else if (trimmedLine.contains('hazardous')) {
-          result['category'] = 'Hazardous';
-        } else {
-          result['category'] = 'Landfill';
-        }
-      }
-
-      if (trimmedLine.contains('explanation:')) {
-        result['explanation'] = line.substring(line.indexOf(':') + 1).trim();
-      }
-
-      if (trimmedLine.contains('disposal:')) {
-        result['disposal'] = line.substring(line.indexOf(':') + 1).trim();
-      }
-    }
-
-    return result;
-  }
-
-  Future<void> _classifyImage() async {
+  Future<void> _analyzeProduct() async {
     if (_image == null) return;
 
     setState(() => _isLoading = true);
@@ -388,34 +328,26 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final storageRef = FirebaseStorage.instance
           .ref()
-          .child('user_images/${widget.user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
+          .child('product_images/${widget.user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
 
       await storageRef.putFile(_image!);
       final imageUrl = await storageRef.getDownloadURL();
 
-      final result = await _callGeminiAPI(_image!);
-      print('API Response: $result');
+      final analysis = await _callGeminiAPI(_image!);
+      print('API Response: $analysis');
 
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.user.uid)
-          .collection('classifications')
+          .collection('product_analyses')
           .add({
         'imageUrl': imageUrl,
-        'is_compostable': result['is_compostable'] ?? false,
-        'category': result['category'] ?? 'Landfill',
-        'confidence': result['confidence'] ?? 'Medium',
-        'explanation': result['explanation'] ?? 'No explanation provided',
-        'instructions': result['disposal'] ?? 'Dispose properly',
-        'misconceptions': result['misconceptions'] ?? 'None noted',
+        ...analysis,
         'timestamp': FieldValue.serverTimestamp(),
       });
 
       setState(() {
-        _classificationResult = (result['is_compostable'] ?? false) ? 'COMPOSTABLE' : 'NOT COMPOSTABLE';
-        _confidence = result['confidence'] ?? 'Medium';
-        _explanation = result['explanation'] ?? 'No explanation provided';
-        _disposalInstructions = result['disposal'] ?? 'Dispose properly';
+        _productAnalysis = analysis;
         _isLoading = false;
       });
 
@@ -425,15 +357,98 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Classification failed: ${e.toString()}'),
+          content: Text('Analysis failed: ${e.toString()}'),
           duration: const Duration(seconds: 5),
         ),
       );
     }
   }
 
-  Color _getResultColor() {
-    return _classificationResult == 'COMPOSTABLE' ? Colors.green : Colors.red;
+  Widget _buildAnalysisResult() {
+    if (_productAnalysis == null) return Container();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: Colors.green.withOpacity(0.3),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Product Analysis',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 15),
+          _buildAnalysisRow('Name', _productAnalysis!['name'] ?? 'Unknown'),
+          _buildAnalysisRow('Type', _productAnalysis!['type'] ?? 'Unknown'),
+          _buildAnalysisRow('Quality Rating',
+              '${_productAnalysis!['qualityRating']?.toString() ?? 'N/A'}/5'),
+          _buildAnalysisRow('Moisture', _productAnalysis!['moistureContent'] ?? 'Unknown'),
+          _buildAnalysisRow('Organic Matter', _productAnalysis!['organicMatter'] ?? 'Unknown'),
+          _buildAnalysisRow('pH Level', _productAnalysis!['phLevel']?.toString() ?? 'Unknown'),
+          _buildAnalysisRow('Price Estimate',
+              '${_productAnalysis!['priceEstimate']?.toStringAsFixed(2) ?? 'N/A'} per kg'),
+
+          if (_productAnalysis!['nutrientAnalysis'] != null) ...[
+            const SizedBox(height: 15),
+            const Text(
+              'Nutrient Analysis:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            _buildAnalysisRow('  Nitrogen', _productAnalysis!['nutrientAnalysis']['nitrogen']),
+            _buildAnalysisRow('  Phosphorus', _productAnalysis!['nutrientAnalysis']['phosphorus']),
+            _buildAnalysisRow('  Potassium', _productAnalysis!['nutrientAnalysis']['potassium']),
+          ],
+
+          if (_productAnalysis!['recommendedUse'] != null) ...[
+            const SizedBox(height: 15),
+            const Text(
+              'Recommended Use:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text(_productAnalysis!['recommendedUse']),
+          ],
+
+          if (_productAnalysis!['additionalNotes'] != null) ...[
+            const SizedBox(height: 15),
+            const Text(
+              'Additional Notes:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text(_productAnalysis!['additionalNotes']),
+          ],
+
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              // Navigate to product upload screen with analysis data
+            },
+            child: const Text('UPLOAD TO MARKETPLACE'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalysisRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(value),
+        ],
+      ),
+    );
   }
 
   Widget _buildClassificationContent() {
@@ -443,7 +458,7 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Upload clear photo of waste item:',
+            'Upload photo of compost product:',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
@@ -492,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _isLoading ? null : _classifyImage,
+              onPressed: _isLoading ? null : _analyzeProduct,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -503,126 +518,19 @@ class _HomeScreenState extends State<HomeScreen> {
               child: _isLoading
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Text(
-                'ANALYZE WASTE',
+                'ANALYZE PRODUCT',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
           ],
-          if (_classificationResult != null) ...[
+          if (_productAnalysis != null) ...[
             const SizedBox(height: 30),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: _getResultColor().withOpacity(0.1),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: _getResultColor().withOpacity(0.3),
-                  width: 2,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _classificationResult == 'COMPOSTABLE'
-                            ? Icons.eco
-                            : Icons.warning,
-                        color: _getResultColor(),
-                        size: 30,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _classificationResult!,
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: _getResultColor(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_confidence != null) ...[
-                    const SizedBox(height: 15),
-                    Text(
-                      'Confidence: $_confidence',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                  if (_explanation != null) ...[
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Analysis:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      _explanation!,
-                      style: const TextStyle(fontSize: 15),
-                    ),
-                  ],
-                  if (_disposalInstructions != null) ...[
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Disposal Instructions:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      _disposalInstructions!,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.blueGrey,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SchedulePickupScreen(
-                      user: widget.user,
-                      wasteType: _classificationResult == 'COMPOSTABLE'
-                          ? 'Compostable'
-                          : _classificationResult ?? 'General',
-                      amountKg: 5.0,
-                    ),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'SCHEDULE PICKUP WITH COMPANY',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
+            _buildAnalysisResult(),
           ],
           if (_history.isNotEmpty) ...[
             const SizedBox(height: 30),
             const Text(
-              'RECENT SCANS',
+              'RECENT ANALYSES',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -632,7 +540,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 10),
             ..._history.map((item) {
-              final isCompostable = item['is_compostable'] == true;
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 8),
                 shape: RoundedRectangleBorder(
@@ -654,54 +561,25 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Icon(
-                            isCompostable ? Icons.eco : Icons.warning,
-                            color: isCompostable ? Colors.green : Colors.red,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            isCompostable ? 'Compostable' : 'Not Compostable',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isCompostable ? Colors.green : Colors.red,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            item['confidence'] ?? 'Medium',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        item['name'] ?? 'Unknown Product',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      if (item['explanation'] != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          item['explanation'],
-                          style: const TextStyle(fontSize: 14),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      if (item['instructions'] != null) ...[
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Instructions:',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          item['instructions'],
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ],
+                      Text(
+                        'Type: ${item['type'] ?? 'Unknown'}',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      Text(
+                        'Quality: ${item['qualityRating']?.toString() ?? 'N/A'}/5',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      Text(
+                        'Price Estimate: ${item['priceEstimate']?.toStringAsFixed(2) ?? 'N/A'} per kg',
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ],
                   ),
                 ),
@@ -717,7 +595,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedIndex == 0 ? 'EcoSort AI' : 'My Profile'),
+        title: Text(_selectedIndex == 0 ? 'Compost Analyzer' : 'My Profile'),
       ),
       body: _selectedIndex == 0
           ? _buildClassificationContent()
@@ -727,8 +605,8 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt),
-            label: 'Classify',
+            icon: Icon(Icons.eco),
+            label: 'Analyze',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
