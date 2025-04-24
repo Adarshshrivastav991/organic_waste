@@ -4,10 +4,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Stream to listen to auth state changes
+
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Sign in with email and password
+
   Future<User?> signInWithEmailAndPassword(String email, String password) async {
     try {
       final result = await _auth.signInWithEmailAndPassword(
@@ -20,7 +20,7 @@ class AuthService {
     }
   }
 
-  // Register with email and password
+
   Future<User?> registerWithEmailAndPassword(String email, String password) async {
     try {
       final result = await _auth.createUserWithEmailAndPassword(
@@ -33,7 +33,7 @@ class AuthService {
     }
   }
 
-  // Sign in with Google
+
   Future<User?> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
@@ -52,7 +52,7 @@ class AuthService {
     }
   }
 
-  // Sign out
+
   Future<void> signOut() async {
     await _auth.signOut();
     await GoogleSignIn().signOut();

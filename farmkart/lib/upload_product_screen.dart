@@ -19,7 +19,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
   String? _imageUrl;
   String? _imagePath;
 
-  // Form fields
+
   String _name = '';
   String _type = 'Vermicompost';
   String _description = '';
@@ -60,7 +60,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
     if (_imageFile == null) return null;
 
     try {
-      // Create reference with product ID
+
       _imagePath = 'compost_images/$productId.jpg';
       final storageRef = FirebaseStorage.instance.ref().child(_imagePath!);
 
@@ -97,25 +97,25 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
     }
 
     try {
-      // Show loading indicator
+
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Create product document reference first
+
       final productRef = FirebaseFirestore.instance.collection('products').doc();
 
-      // Upload image if selected
+
       if (_imageFile != null) {
         _imageUrl = await _uploadImage(productRef.id);
       }
 
-      // Use user's email if contact email is not provided
+
       final contactEmail = _contactEmail.isNotEmpty ? _contactEmail : user.email ?? '';
 
-      // Prepare product data
+
       final productData = {
         'name': _name,
         'type': _type,
@@ -134,22 +134,22 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      // Validate data matches security rules
+
       if (_pricePerKg <= 0 || _availableQuantity <= 0) {
         throw Exception('Price and quantity must be positive numbers');
       }
 
-      // Save to Firestore
+
       await productRef.set(productData);
 
-      // Close loading dialog
+
       if (mounted) Navigator.of(context).pop();
 
-      // Show success and reset form
+
       _showSuccess('Product uploaded successfully!');
       _resetForm();
     } catch (e) {
-      // Clean up failed upload
+
       if (_imagePath != null) {
         await FirebaseStorage.instance.ref().child(_imagePath!).delete().catchError((e) {});
       }
@@ -232,7 +232,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Image Upload Section
+
               GestureDetector(
                 onTap: _pickImage,
                 child: Container(
@@ -259,7 +259,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Product Name
+           
               TextFormField(
                 decoration: const InputDecoration(
                   labelText: 'Product Name',
@@ -275,7 +275,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Compost Type Dropdown
+
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
                   labelText: 'Compost Type',
@@ -346,7 +346,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Available Quantity
+
               TextFormField(
                 decoration: const InputDecoration(
                   labelText: 'Available Quantity (kg)',
@@ -370,7 +370,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Contact Number
+
               TextFormField(
                 decoration: const InputDecoration(
                   labelText: 'Contact Number',
@@ -391,7 +391,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Contact Email
+
               TextFormField(
                 decoration: const InputDecoration(
                   labelText: 'Contact Email',
@@ -409,7 +409,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Availability Switch
+
               Row(
                 children: [
                   const Text('Available for Sale:'),
@@ -426,7 +426,7 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Submit Button
+
               ElevatedButton(
                 onPressed: _submitForm,
                 style: ElevatedButton.styleFrom(

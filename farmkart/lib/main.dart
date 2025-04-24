@@ -10,7 +10,7 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Display loading screen immediately
+
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     home: Scaffold(

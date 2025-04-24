@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'auth_service.dart';
 import 'marketplace_screen.dart';
 import 'marketplace_screen.dart' show MarketplaceScreen;
+import 'schedule_pickup_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final User user;
@@ -135,12 +136,10 @@ class _HomeScreenState extends State<HomeScreen> {
         final responseData = jsonDecode(response.body);
         final text = responseData['candidates'][0]['content']['parts'][0]['text'];
 
-        // Try to parse the response as JSON
         try {
           final jsonResponse = jsonDecode(text);
           return jsonResponse;
         } catch (e) {
-          // If parsing as JSON fails, fall back to text parsing
           return _parsePlainTextResponse(text);
         }
       } else {
@@ -152,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Map<String, dynamic> _parsePlainTextResponse(String text) {
-    // Default values
     final result = {
       'is_compostable': false,
       'confidence': 'Medium',
@@ -162,7 +160,6 @@ class _HomeScreenState extends State<HomeScreen> {
       'misconceptions': 'None noted'
     };
 
-    // Try to extract information from the text response
     final lines = text.split('\n');
     for (final line in lines) {
       final trimmedLine = line.trim().toLowerCase();
@@ -213,7 +210,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Upload image to Firebase Storage
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('user_images/${widget.user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
@@ -221,11 +217,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await storageRef.putFile(_image!);
       final imageUrl = await storageRef.getDownloadURL();
 
-      // Call Gemini API
       final result = await _callGeminiAPI(_image!);
-      print('API Response: $result'); // Debug print
+      print('API Response: $result');
 
-      // Save to Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.user.uid)
@@ -241,7 +235,6 @@ class _HomeScreenState extends State<HomeScreen> {
         'timestamp': FieldValue.serverTimestamp(),
       });
 
-      // Update UI
       setState(() {
         _classificationResult = (result['is_compostable'] ?? false) ? 'COMPOSTABLE' : 'NOT COMPOSTABLE';
         _confidence = result['confidence'] ?? 'Medium';
@@ -250,7 +243,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
       });
 
-      // Reload history
       _loadHistory();
     } catch (e) {
       print('Error: $e');
@@ -459,6 +451,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SchedulePickupScreen(
+                      user: widget.user,
+                      wasteType: _classificationResult == 'COMPOSTABLE'
+                          ? 'Compostable'
+                          : _classificationResult ?? 'General',
+                      amountKg: 5.0,
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'SCHEDULE PICKUP WITH COMPANY',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
