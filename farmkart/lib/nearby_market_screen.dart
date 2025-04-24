@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math' show cos, sqrt, asin;
-
-import 'compost_product_model.dart'; // Your model file
-import 'product_grid.dart'; // Accepts List<CompostProduct>
 
 class NearByMarketScreen extends StatefulWidget {
   const NearByMarketScreen({Key? key}) : super(key: key);
@@ -15,8 +13,10 @@ class NearByMarketScreen extends StatefulWidget {
 
 class _NearByMarketScreenState extends State<NearByMarketScreen> {
   Position? _currentPosition;
-  List<CompostProduct> _nearbyProducts = [];
+  List<Map<String, dynamic>> _nearbyProducts = [];
   final double searchRadiusKm = 10;
+  GoogleMapController? _mapController;
+  Set<Marker> _markers = {};
 
   @override
   void initState() {
@@ -28,8 +28,7 @@ class _NearByMarketScreenState extends State<NearByMarketScreen> {
     final hasPermission = await _handlePermission();
     if (!hasPermission) return;
 
-    final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
+    final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
     setState(() {
       _currentPosition = position;
     });
@@ -52,20 +51,33 @@ class _NearByMarketScreenState extends State<NearByMarketScreen> {
 
       if (distance <= searchRadiusKm) {
         return {
-          'product': CompostProduct.fromMap(doc.id, data),
+          'id': doc.id,
+          ...data,
           'distance': distance,
         };
-      } else {
-        return null;
       }
-    }).where((entry) => entry != null).toList();
+      return null;
+    }).where((e) => e != null).toList();
 
-    filtered.sort((a, b) =>
-        (a!['distance'] as double).compareTo(b!['distance'] as double));
+    filtered.sort((a, b) => a!['distance'].compareTo(b!['distance']));
 
     setState(() {
-      _nearbyProducts = filtered.map((e) => e!['product'] as CompostProduct).toList();
+      _nearbyProducts = filtered.cast<Map<String, dynamic>>();
+      _markers = _createMarkers(_nearbyProducts);
     });
+  }
+
+  Set<Marker> _createMarkers(List<Map<String, dynamic>> products) {
+    return products.map((product) {
+      return Marker(
+        markerId: MarkerId(product['id']),
+        position: LatLng(product['latitude'], product['longitude']),
+        infoWindow: InfoWindow(
+          title: product['name'] ?? 'Compost',
+          snippet: '${product['pricePerKg']} ₹/kg',
+        ),
+      );
+    }).toSet();
   }
 
   double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
@@ -93,12 +105,19 @@ class _NearByMarketScreenState extends State<NearByMarketScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Nearby Compost Products")),
+      appBar: AppBar(title: const Text("Nearby Compost Stores")),
       body: _currentPosition == null
           ? const Center(child: CircularProgressIndicator())
-          : _nearbyProducts.isEmpty
-          ? const Center(child: Text("No nearby products found."))
-          : ProductGrid(products: _nearbyProducts),
+          : GoogleMap(
+        onMapCreated: (controller) => _mapController = controller,
+        initialCameraPosition: CameraPosition(
+          target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+          zoom: 13,
+        ),
+        markers: _markers,
+        myLocationEnabled: true,
+        myLocationButtonEnabled: true,
+      ),
     );
   }
 }
