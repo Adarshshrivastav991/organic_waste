@@ -26,6 +26,8 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
   double _pricePerKg = 0.0;
   int _availableQuantity = 0;
   bool _isAvailable = true;
+  String _contactNumber = '';
+  String _contactEmail = '';
 
   final List<String> _compostTypes = [
     'Vermicompost',
@@ -110,6 +112,9 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
         _imageUrl = await _uploadImage(productRef.id);
       }
 
+      // Use user's email if contact email is not provided
+      final contactEmail = _contactEmail.isNotEmpty ? _contactEmail : user.email ?? '';
+
       // Prepare product data
       final productData = {
         'name': _name,
@@ -119,6 +124,8 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
         'sellerId': user.uid,
         'sellerName': user.displayName ?? 'Anonymous Seller',
         'sellerEmail': user.email,
+        'contactNumber': _contactNumber,
+        'contactEmail': contactEmail,
         'imageUrl': _imageUrl,
         'imagePath': _imagePath, // Store the storage path for deletion later
         'availableQuantity': _availableQuantity,
@@ -164,6 +171,8 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
       _pricePerKg = 0.0;
       _availableQuantity = 0;
       _isAvailable = true;
+      _contactNumber = '';
+      _contactEmail = '';
     });
   }
 
@@ -183,6 +192,14 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
         backgroundColor: Colors.green,
       ),
     );
+  }
+
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
+  }
+
+  bool _isValidPhoneNumber(String phone) {
+    return RegExp(r'^[0-9]{10,15}$').hasMatch(phone);
   }
 
   @override
@@ -350,6 +367,45 @@ class _UploadProductScreenState extends State<UploadProductScreen> {
                   return null;
                 },
                 onSaved: (value) => _availableQuantity = int.parse(value!),
+              ),
+              const SizedBox(height: 16),
+
+              // Contact Number
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Contact Number',
+                  hintText: 'Enter your phone number',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.phone,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a contact number';
+                  }
+                  if (!_isValidPhoneNumber(value)) {
+                    return 'Please enter a valid phone number (10-15 digits)';
+                  }
+                  return null;
+                },
+                onSaved: (value) => _contactNumber = value!,
+              ),
+              const SizedBox(height: 16),
+
+              // Contact Email
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Contact Email',
+                  hintText: 'Enter your email for contact',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value != null && value.isNotEmpty && !_isValidEmail(value)) {
+                    return 'Please enter a valid email address';
+                  }
+                  return null;
+                },
+                onSaved: (value) => _contactEmail = value ?? '',
               ),
               const SizedBox(height: 16),
 

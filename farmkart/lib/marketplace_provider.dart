@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class MarketplaceProvider extends ChangeNotifier {
   List<CompostProduct> compostProducts = [];
@@ -79,19 +80,42 @@ class MarketplaceProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addProduct(Map<String, dynamic> productData) async {
+  Future<void> addProduct({
+    required String name,
+    required String type,
+    required String description,
+    required double pricePerKg,
+    required int availableQuantity,
+    String? imageUrl,
+    String? contactPhone,
+    String? contactEmail,
+  }) async {
     try {
       isLoading = true;
       notifyListeners();
 
-      if (!productData.containsKey('createdAt')) {
-        productData['createdAt'] = FieldValue.serverTimestamp();
-      }
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
 
-      await FirebaseFirestore.instance
-          .collection('products')
-          .add(productData);
+      // Use provided email or fallback to user's email
+      final sellerEmail = contactEmail ?? user.email ?? '';
 
+      final productData = {
+        'name': name,
+        'type': type,
+        'description': description,
+        'pricePerKg': pricePerKg,
+        'availableQuantity': availableQuantity,
+        'imageUrl': imageUrl ?? '',
+        'sellerId': user.uid,
+        'sellerName': user.displayName ?? 'Anonymous Seller',
+        'sellerEmail': sellerEmail,
+        'sellerPhone': contactPhone ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance.collection('products').add(productData);
       errorMessage = null;
     } catch (e) {
       errorMessage = 'Failed to add product: $e';
@@ -123,16 +147,9 @@ class MarketplaceProvider extends ChangeNotifier {
     bool? availability,
   }) {
     filteredProducts = compostProducts.where((product) {
-      // Type filter
-      final typeMatch = typeFilter == null ||
-          typeFilter == 'All' ||
-          product.type == typeFilter;
-
-      // Price filter
+      final typeMatch = typeFilter == null || typeFilter == 'All' || product.type == typeFilter;
       final priceMatch = (priceRange ?? this.priceRange).start <= product.pricePerKg &&
           product.pricePerKg <= (priceRange ?? this.priceRange).end;
-
-      // Availability filter (using availableQuantity > 0 as availability check)
       final availabilityMatch = (availability ?? availabilityFilter)
           ? product.availableQuantity > 0
           : true;
@@ -166,6 +183,8 @@ class CompostProduct {
   final String sellerName;
   final String sellerEmail;
   final String sellerPhone;
+  final String sellerId;
+  final DateTime createdAt;
 
   CompostProduct({
     required this.id,
@@ -178,6 +197,8 @@ class CompostProduct {
     required this.sellerName,
     required this.sellerEmail,
     required this.sellerPhone,
+    required this.sellerId,
+    required this.createdAt,
   });
 
   factory CompostProduct.fromFirestore(DocumentSnapshot doc) {
@@ -193,6 +214,8 @@ class CompostProduct {
       sellerName: data['sellerName'] ?? 'Unknown Seller',
       sellerEmail: data['sellerEmail'] ?? '',
       sellerPhone: data['sellerPhone'] ?? '',
+      sellerId: data['sellerId'] ?? '',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 
@@ -207,7 +230,8 @@ class CompostProduct {
       'sellerName': sellerName,
       'sellerEmail': sellerEmail,
       'sellerPhone': sellerPhone,
-      'createdAt': FieldValue.serverTimestamp(),
+      'sellerId': sellerId,
+      'createdAt': Timestamp.fromDate(createdAt),
     };
   }
 }
