@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart';
 import 'dart:math' show cos, sqrt, asin;
 
-import 'marketplace_provider.dart';
-import 'product_grid.dart';
+import 'compost_product_model.dart'; // Your model file
+import 'product_grid.dart'; // Accepts List<CompostProduct>
 
 class NearByMarketScreen extends StatefulWidget {
   const NearByMarketScreen({Key? key}) : super(key: key);
@@ -17,7 +15,7 @@ class NearByMarketScreen extends StatefulWidget {
 
 class _NearByMarketScreenState extends State<NearByMarketScreen> {
   Position? _currentPosition;
-  List<Map<String, dynamic>> _nearbyProducts = [];
+  List<CompostProduct> _nearbyProducts = [];
   final double searchRadiusKm = 10;
 
   @override
@@ -30,34 +28,43 @@ class _NearByMarketScreenState extends State<NearByMarketScreen> {
     final hasPermission = await _handlePermission();
     if (!hasPermission) return;
 
-    final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
     setState(() {
       _currentPosition = position;
     });
 
     final snapshot = await FirebaseFirestore.instance.collection('products').get();
 
-    final filtered = snapshot.docs.where((doc) {
+    final filtered = snapshot.docs.map((doc) {
       final data = doc.data();
-      if (!data.containsKey('location')) return false;
+      final lat = data['latitude'];
+      final lon = data['longitude'];
 
-      final geoPoint = data['location'] as GeoPoint;
+      if (lat == null || lon == null) return null;
+
       final distance = _calculateDistance(
         position.latitude,
         position.longitude,
-        geoPoint.latitude,
-        geoPoint.longitude,
+        lat,
+        lon,
       );
-      return distance <= searchRadiusKm;
-    }).map((doc) {
-      return {
-        'id': doc.id,
-        ...doc.data(),
-      };
-    }).toList();
+
+      if (distance <= searchRadiusKm) {
+        return {
+          'product': CompostProduct.fromMap(doc.id, data),
+          'distance': distance,
+        };
+      } else {
+        return null;
+      }
+    }).where((entry) => entry != null).toList();
+
+    filtered.sort((a, b) =>
+        (a!['distance'] as double).compareTo(b!['distance'] as double));
 
     setState(() {
-      _nearbyProducts = filtered;
+      _nearbyProducts = filtered.map((e) => e!['product'] as CompostProduct).toList();
     });
   }
 
