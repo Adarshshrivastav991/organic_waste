@@ -43,13 +43,13 @@ class MyApp extends StatelessWidget {
         title: 'FarmKart',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          primarySwatch: Colors.green,  // Changed from orange to green
+          primarySwatch: Colors.orange,  // Changed from orange to green
           colorScheme: ColorScheme.light(
-            primary: Colors.green,
-            secondary: Colors.lightGreen,
+            primary: Colors.orange,
+            secondary: Colors.yellow,
           ),
           appBarTheme: AppBarTheme(
-            backgroundColor: Colors.green,
+            backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
           ),
           elevatedButtonTheme: ElevatedButtonThemeData(

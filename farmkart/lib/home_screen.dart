@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EcoSort AI'),
+        title: const Text('FarmKart'),
         actions: [
           _buildPointsBadge(),
           IconButton(

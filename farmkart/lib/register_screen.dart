@@ -24,7 +24,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('EcoSort AI - Register')),
+      appBar: AppBar(title: Text('Farmkart- Register')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(

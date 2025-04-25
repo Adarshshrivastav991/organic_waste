@@ -35,6 +35,7 @@ dependencies:
   firebase_storage: ^11.6.5
   google_sign_in: ^6.1.0
   image_picker: ^0.8.7
+  flutter_animate: ^4.1.1
 #  cupertino_icons: ^1.0.8
   flutter_polyline_points: 2.1.0
   permission_handler: ^11.0.1

@@ -156,7 +156,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          widget.user.displayName ?? 'EcoSort User',
+          widget.user.displayName ?? 'Farmkart User',
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         Text(
