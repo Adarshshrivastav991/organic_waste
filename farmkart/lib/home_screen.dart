@@ -1,12 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 import 'auth_service.dart';
 import 'marketplace_screen.dart';
 import 'nearby_market_screen.dart';
 import 'profile_screen.dart';
 import 'classify_screen.dart';
+import 'upload_video_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final User user;
@@ -117,22 +119,90 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildVideoFeed() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Educational Videos',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: Icon(Icons.add),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => UploadVideoScreen(),
+                    ),
+                  );
+                },
+                tooltip: 'Upload Video',
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('videos')
+                .orderBy('timestamp', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.data!.docs.isEmpty) {
+                return Center(child: Text('No videos available yet'));
+              }
+
+              return ListView.builder(
+                itemCount: snapshot.data!.docs.length,
+                itemBuilder: (context, index) {
+                  var videoData = snapshot.data!.docs[index];
+                  return VideoCard(
+                    title: videoData['title'],
+                    description: videoData['description'],
+                    videoUrl: videoData['videoUrl'],
+                    username: videoData['username'],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget bodyContent;
 
     switch (_selectedIndex) {
       case 0:
-        bodyContent = const WasteClassificationScreen();
+        bodyContent = _buildVideoFeed();
         break;
       case 1:
-        bodyContent = const MarketplaceScreen();
+        bodyContent = const WasteClassificationScreen();
         break;
       case 2:
+        bodyContent = const MarketplaceScreen();
+        break;
+      case 3:
         bodyContent = const NearByMarketScreen();
         break;
       default:
-        bodyContent = const WasteClassificationScreen();
+        bodyContent = _buildVideoFeed();
     }
 
     return Scaffold(
@@ -151,12 +221,15 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          // Removed the logout button from here
         ],
       ),
       body: bodyContent,
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.video_library),
+            label: 'Videos',
+          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.camera_alt),
             label: 'Classify',
@@ -175,6 +248,97 @@ class _HomeScreenState extends State<HomeScreen> {
         unselectedItemColor: Colors.grey,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
+      ),
+    );
+  }
+}
+
+class VideoCard extends StatefulWidget {
+  final String title;
+  final String description;
+  final String videoUrl;
+  final String username;
+
+  const VideoCard({
+    required this.title,
+    required this.description,
+    required this.videoUrl,
+    required this.username,
+    Key? key,
+  }) : super(key: key);
+
+  @override
+  _VideoCardState createState() => _VideoCardState();
+}
+
+class _VideoCardState extends State<VideoCard> {
+  late VideoPlayerController _videoPlayerController;
+  late ChewieController _chewieController;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideoPlayer();
+  }
+
+  Future<void> _initializeVideoPlayer() async {
+    _videoPlayerController = VideoPlayerController.network(widget.videoUrl);
+    await _videoPlayerController.initialize();
+
+    _chewieController = ChewieController(
+      videoPlayerController: _videoPlayerController,
+      autoPlay: false,
+      looping: false,
+      showControls: true,
+      placeholder: Container(
+        color: Colors.grey,
+      ),
+    );
+
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _videoPlayerController.dispose();
+    _chewieController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.all(8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text(
+              widget.title,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              'Posted by: ${widget.username}',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          SizedBox(height: 8),
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: _videoPlayerController.value.isInitialized
+                ? Chewie(controller: _chewieController)
+                : Center(child: CircularProgressIndicator()),
+          ),
+          Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text(widget.description),
+          ),
+        ],
       ),
     );
   }
