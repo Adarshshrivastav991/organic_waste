@@ -1,150 +1,211 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
+import 'upload_video_screen.dart';
 
-class UploadVideoScreen extends StatefulWidget {
-  @override
-  _UploadVideoScreenState createState() => _UploadVideoScreenState();
+void main() {
+  runApp(MyApp());
 }
 
-class _UploadVideoScreenState extends State<UploadVideoScreen> {
-  File? _video;
-  TextEditingController _titleController = TextEditingController();
-  TextEditingController _descriptionController = TextEditingController();
-  bool _isUploading = false;
-  double _uploadProgress = 0;
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'FarmTube',
+      theme: ThemeData.dark(),
+      home: ShortVideoFeed(),
+    );
+  }
+}
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+class ShortVideoFeed extends StatefulWidget {
+  @override
+  _ShortVideoFeedState createState() => _ShortVideoFeedState();
+}
 
-  /// Picks a video from the gallery
-  Future<void> _pickVideo() async {
-    final pickedFile = await ImagePicker().pickVideo(source: ImageSource.gallery);
-    if (pickedFile != null) {
+class _ShortVideoFeedState extends State<ShortVideoFeed> {
+  final PageController _pageController = PageController();
+  List<Map<String, dynamic>> videos = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideos();
+  }
+
+  Future<void> _initVideos() async {
+    try {
+      QuerySnapshot querySnapshot =
+      await FirebaseFirestore.instance.collection('videos').orderBy('timestamp', descending: true).get();
+
+      final List<Map<String, dynamic>> videoData = querySnapshot.docs.map((doc) {
+        return {
+          'url': doc['videoUrl'] as String,
+          'title': doc['title'] as String,
+          'description': doc['description'] as String,
+          'username': doc['username'] ?? 'Unknown',
+        };
+      }).toList();
+
       setState(() {
-        _video = File(pickedFile.path);
+        videos = videoData;
       });
+    } catch (e) {
+      print('Error fetching videos: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  /// Uploads video to Firebase Storage and stores metadata in Firestore
-  Future<void> _uploadVideo() async {
-    if (_video == null || _titleController.text.isEmpty || _descriptionController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please select a video and enter title & description")),
-      );
-      return;
-    }
-
-    User? user = _auth.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ User not logged in!")),
-      );
-      return;
-    }
-
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0;
-    });
-
-    try {
-      String fileName = "${DateTime.now().millisecondsSinceEpoch}.mp4";
-      Reference storageRef = _storage.ref().child("videos/$fileName");
-
-      UploadTask uploadTask = storageRef.putFile(_video!);
-
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        double progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        setState(() {
-          _uploadProgress = progress;
-        });
-      });
-
-      TaskSnapshot taskSnapshot = await uploadTask;
-      String videoUrl = await taskSnapshot.ref.getDownloadURL();
-
-      // Store video details in Firestore
-      await _firestore.collection("videos").add({
-        "title": _titleController.text,
-        "description": _descriptionController.text,
-        "videoUrl": videoUrl,
-        "username": user.displayName ?? "Anonymous",
-        "timestamp": FieldValue.serverTimestamp(),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ Video uploaded successfully!")),
-      );
-
-      setState(() {
-        _isUploading = false;
-        _video = null;
-        _uploadProgress = 0;
-        _titleController.clear();
-        _descriptionController.clear();
-      });
-
-    } catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ Failed to upload video: $error")),
-      );
-      setState(() {
-        _isUploading = false;
-      });
-    }
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Upload Video")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _video == null
-                ? Text("No video selected", style: TextStyle(fontSize: 16))
-                : Text("Video selected: ${_video!.path.split('/').last}", style: TextStyle(fontSize: 16)),
+      appBar: AppBar(
+        title: Text('FarmTube', style: TextStyle(color: Colors.black),),
+        backgroundColor: Colors.green[500],
+        actions: [
+          IconButton(
+            icon: Icon(Icons.add),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => UploadVideoScreen()),
+              ).then((_) => _initVideos());
+            },
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : videos.isEmpty
+          ? Center(child: Text('No videos available'))
+          : PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemCount: videos.length,
+        itemBuilder: (context, index) {
+          return VideoItem(
+            videoUrl: videos[index]['url']!,
+            title: videos[index]['title']!,
+            description: videos[index]['description']!,
+            username: videos[index]['username']!,
+          );
+        },
+      ),
+    );
+  }
+}
 
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _pickVideo,
-              child: Text("Pick Video"),
-            ),
+class VideoItem extends StatefulWidget {
+  final String videoUrl;
+  final String title;
+  final String description;
+  final String username;
 
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(labelText: "Video Title"),
-            ),
+  VideoItem({required this.videoUrl, required this.title, required this.description, required this.username});
 
-            TextField(
-              controller: _descriptionController,
-              decoration: InputDecoration(labelText: "Video Description"),
-            ),
+  @override
+  _VideoItemState createState() => _VideoItemState();
+}
 
-            SizedBox(height: 20),
+class _VideoItemState extends State<VideoItem> {
+  late VideoPlayerController _videoController;
+  ChewieController? _chewieController;
 
-            _isUploading
-                ? Column(
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
+  }
+
+  void _initializeVideo() async {
+    _videoController = VideoPlayerController.network(widget.videoUrl);
+    await _videoController.initialize();
+    _chewieController = ChewieController(
+      videoPlayerController: _videoController,
+      autoPlay: true,
+      looping: true,
+      showControls: false,
+    );
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _videoController.dispose();
+    _chewieController?.dispose();
+    super.dispose();
+  }
+
+  void _shareVideo() {
+    Share.share(widget.videoUrl);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_chewieController == null || !_videoController.value.isInitialized) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    return GestureDetector(
+      onTap: () {
+        if (_videoController.value.isPlaying) {
+          _videoController.pause();
+        } else {
+          _videoController.play();
+        }
+      },
+      child: Stack(
+        children: [
+          Chewie(controller: _chewieController!),
+          Positioned(
+            bottom: 60,
+            left: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                LinearProgressIndicator(value: _uploadProgress),
-                SizedBox(height: 10),
-                Text("${(_uploadProgress * 100).toStringAsFixed(2)}% uploaded"),
+                Text(
+                  '@${widget.username}',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  widget.title,
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  widget.description,
+                  style: TextStyle(color: Colors.black),
+                ),
               ],
-            )
-                : ElevatedButton(
-              onPressed: _uploadVideo,
-              child: Text("Upload Video"),
             ),
-          ],
-        ),
+          ),
+          Positioned(
+            bottom: 20,
+            right: 20,
+            child: FloatingActionButton(
+              backgroundColor: Colors.white,
+              child: Icon(Icons.share, color: Colors.black),
+              onPressed: _shareVideo,
+            ),
+          ),
+        ],
       ),
     );
   }

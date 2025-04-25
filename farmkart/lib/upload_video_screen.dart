@@ -1,9 +1,10 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class UploadVideoScreen extends StatefulWidget {
   @override
@@ -20,22 +21,40 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ImagePicker _picker = ImagePicker();
 
   /// Picks a video from the gallery
   Future<void> _pickVideo() async {
-    final pickedFile = await ImagePicker().pickVideo(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _video = File(pickedFile.path);
-      });
+    try {
+      final pickedFile = await _picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 10),
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _video = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error picking video: ${e.toString()}")),
+      );
     }
   }
 
   /// Uploads video to Firebase Storage and stores metadata in Firestore
   Future<void> _uploadVideo() async {
-    if (_video == null || _titleController.text.isEmpty || _descriptionController.text.isEmpty) {
+    if (_video == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please select a video and enter title & description")),
+        SnackBar(content: Text("Please select a video first")),
+      );
+      return;
+    }
+
+    if (_titleController.text.isEmpty || _descriptionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please enter both title and description")),
       );
       return;
     }
@@ -43,7 +62,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     User? user = _auth.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ User not logged in!")),
+        SnackBar(content: Text("You need to be logged in to upload videos")),
       );
       return;
     }
@@ -54,19 +73,38 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     });
 
     try {
-      String fileName = "${DateTime.now().millisecondsSinceEpoch}.mp4";
-      Reference storageRef = _storage.ref().child("videos/$fileName");
+      // Create a unique filename
+      String fileName = "video_${user.uid}_${DateTime.now().millisecondsSinceEpoch}.mp4";
+      Reference storageRef = _storage.ref().child("user_videos/${user.uid}/$fileName");
 
-      UploadTask uploadTask = storageRef.putFile(_video!);
+      // Set metadata for the video
+      final metadata = SettableMetadata(
+        contentType: 'video/mp4',
+        customMetadata: {
+          'uploaded_by': user.uid,
+          'original_filename': _video!.path.split('/').last,
+        },
+      );
 
+      // Start the upload task
+      UploadTask uploadTask = storageRef.putFile(_video!, metadata);
+
+      // Listen to the upload stream
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        double progress = snapshot.bytesTransferred / snapshot.totalBytes;
         setState(() {
-          _uploadProgress = progress;
+          _uploadProgress = snapshot.bytesTransferred / snapshot.totalBytes;
         });
+      }, onError: (e) {
+        setState(() {
+          _isUploading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Upload failed: ${e.toString()}")),
+        );
       });
 
-      TaskSnapshot taskSnapshot = await uploadTask;
+      // Wait for the upload to complete
+      TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() {});
       String videoUrl = await taskSnapshot.ref.getDownloadURL();
 
       // Store video details in Firestore
@@ -74,14 +112,16 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         "title": _titleController.text,
         "description": _descriptionController.text,
         "videoUrl": videoUrl,
+        "userId": user.uid,
         "username": user.displayName ?? "Anonymous",
+        "userEmail": user.email,
         "timestamp": FieldValue.serverTimestamp(),
+        "likes": 0,
+        "views": 0,
+        "commentsCount": 0,
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ Video uploaded successfully!")),
-      );
-
+      // Reset the form
       setState(() {
         _isUploading = false;
         _video = null;
@@ -90,62 +130,145 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         _descriptionController.clear();
       });
 
-    } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ Failed to upload video: $error")),
+        SnackBar(content: Text("Video uploaded successfully!")),
       );
+
+    } catch (error) {
       setState(() {
         _isUploading = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error uploading video: ${error.toString()}")),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Upload Video")),
-      body: Padding(
+      appBar: AppBar(
+        title: Text("Upload Video"),
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _video == null
-                ? Text("No video selected", style: TextStyle(fontSize: 16))
-                : Text("Video selected: ${_video!.path.split('/').last}", style: TextStyle(fontSize: 16)),
+            // Video preview section
+            if (_video != null)
+              Container(
+                height: 200,
+                color: Colors.black.withOpacity(0.1),
+                child: Center(
+                  child: Icon(Icons.videocam, size: 50, color: Colors.grey),
+                ),
+              )
+            else
+              Container(
+                height: 200,
+                color: Colors.black.withOpacity(0.05),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.video_library, size: 50, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text("No video selected", style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ),
 
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _pickVideo,
-              child: Text("Pick Video"),
-            ),
+            SizedBox(height: 20),
 
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(labelText: "Video Title"),
-            ),
-
-            TextField(
-              controller: _descriptionController,
-              decoration: InputDecoration(labelText: "Video Description"),
+            // Video selection button
+            ElevatedButton.icon(
+              icon: Icon(Icons.video_library),
+              label: Text("Select Video"),
+              onPressed: _isUploading ? null : _pickVideo,
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 15),
+              ),
             ),
 
             SizedBox(height: 20),
 
-            _isUploading
-                ? Column(
-              children: [
-                LinearProgressIndicator(value: _uploadProgress),
-                SizedBox(height: 10),
-                Text("${(_uploadProgress * 100).toStringAsFixed(2)}% uploaded"),
-              ],
-            )
-                : ElevatedButton(
-              onPressed: _uploadVideo,
-              child: Text("Upload Video"),
+            // Title field
+            TextField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                labelText: "Title",
+                border: OutlineInputBorder(),
+                hintText: "Enter video title",
+              ),
+              enabled: !_isUploading,
+              maxLength: 100,
             ),
+
+            SizedBox(height: 15),
+
+            // Description field
+            TextField(
+              controller: _descriptionController,
+              decoration: InputDecoration(
+                labelText: "Description",
+                border: OutlineInputBorder(),
+                hintText: "Enter video description",
+              ),
+              enabled: !_isUploading,
+              maxLines: 3,
+              maxLength: 500,
+            ),
+
+            SizedBox(height: 25),
+
+            // Upload button or progress indicator
+            if (_isUploading)
+              Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: _uploadProgress,
+                    backgroundColor: Colors.grey[200],
+                    minHeight: 10,
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    "Uploading: ${(_uploadProgress * 100).toStringAsFixed(1)}%",
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  SizedBox(height: 5),
+                  Text(
+                    "Please wait...",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              )
+            else
+              ElevatedButton(
+                onPressed: _uploadVideo,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  child: Text(
+                    "Upload Video",
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 }
