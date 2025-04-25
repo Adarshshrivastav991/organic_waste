@@ -13,12 +13,17 @@ class MarketplaceProvider extends ChangeNotifier {
   RangeValues priceRange = const RangeValues(0, 1000);
   bool availabilityFilter = true;
 
+  // New field for tracking user's orders
+  List<Order> userOrders = [];
+
   MarketplaceProvider() {
     loadProducts();
     _setupProductsStream();
+    _setupOrdersStream();
   }
 
   StreamSubscription<QuerySnapshot>? _productsSubscription;
+  StreamSubscription<QuerySnapshot>? _ordersSubscription;
 
   void _setupProductsStream() {
     _productsSubscription = FirebaseFirestore.instance
@@ -30,6 +35,23 @@ class MarketplaceProvider extends ChangeNotifier {
     }, onError: (error) {
       errorMessage = 'Failed to load products: $error';
       isLoading = false;
+      notifyListeners();
+    });
+  }
+
+  void _setupOrdersStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _ordersSubscription = FirebaseFirestore.instance
+        .collection('orders')
+        .where('buyerId', isEqualTo: user.uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .listen((snapshot) {
+      _updateOrdersFromSnapshot(snapshot);
+    }, onError: (error) {
+      errorMessage = 'Failed to load orders: $error';
       notifyListeners();
     });
   }
@@ -80,6 +102,87 @@ class MarketplaceProvider extends ChangeNotifier {
     }
   }
 
+  void _updateOrdersFromSnapshot(QuerySnapshot snapshot) {
+    try {
+      userOrders = snapshot.docs.map((doc) {
+        return Order.fromFirestore(doc);
+      }).toList();
+    } catch (e) {
+      errorMessage = 'Failed to update orders: ${e.toString()}';
+    }
+    notifyListeners();
+  }
+
+  // New method for creating an order
+  Future<void> createOrder({
+    required String productId,
+    required String productName,
+    required String sellerId,
+    required String sellerName,
+    required double quantity,
+    required double pricePerKg,
+    required double totalPrice,
+    String? message,
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+
+      // Create order document
+      final orderData = {
+        'productId': productId,
+        'productName': productName,
+        'sellerId': sellerId,
+        'sellerName': sellerName,
+        'buyerId': user.uid,
+        'buyerName': user.displayName ?? 'Anonymous Buyer',
+        'buyerEmail': user.email,
+        'quantity': quantity,
+        'pricePerKg': pricePerKg,
+        'totalPrice': totalPrice,
+        'message': message ?? '',
+        'status': 'pending', // pending, confirmed, shipped, delivered, cancelled
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance.collection('orders').add(orderData);
+
+      // Update product availability
+      await _updateProductQuantity(productId, quantity);
+
+      errorMessage = null;
+    } catch (e) {
+      errorMessage = 'Failed to create order: $e';
+      rethrow;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _updateProductQuantity(String productId, double quantity) async {
+    try {
+      final productRef = FirebaseFirestore.instance.collection('products').doc(productId);
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(productRef);
+        final currentQuantity = (snapshot.data()?['availableQuantity'] ?? 0).toDouble();
+        final newQuantity = currentQuantity - quantity;
+
+        transaction.update(productRef, {
+          'availableQuantity': newQuantity > 0 ? newQuantity : 0,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (e) {
+      errorMessage = 'Failed to update product quantity: $e';
+      rethrow;
+    }
+  }
+
   Future<void> addProduct({
     required String name,
     required String type,
@@ -97,7 +200,6 @@ class MarketplaceProvider extends ChangeNotifier {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not logged in');
 
-      // Use provided email or fallback to user's email
       final sellerEmail = contactEmail ?? user.email ?? '';
 
       final productData = {
@@ -168,6 +270,7 @@ class MarketplaceProvider extends ChangeNotifier {
   @override
   void dispose() {
     _productsSubscription?.cancel();
+    _ordersSubscription?.cancel();
     super.dispose();
   }
 }
@@ -232,6 +335,83 @@ class CompostProduct {
       'sellerPhone': sellerPhone,
       'sellerId': sellerId,
       'createdAt': Timestamp.fromDate(createdAt),
+    };
+  }
+}
+
+// New Order class to handle purchase orders
+class Order {
+  final String id;
+  final String productId;
+  final String productName;
+  final String sellerId;
+  final String sellerName;
+  final String buyerId;
+  final String buyerName;
+  final String? buyerEmail;
+  final double quantity;
+  final double pricePerKg;
+  final double totalPrice;
+  final String? message;
+  final String status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  Order({
+    required this.id,
+    required this.productId,
+    required this.productName,
+    required this.sellerId,
+    required this.sellerName,
+    required this.buyerId,
+    required this.buyerName,
+    this.buyerEmail,
+    required this.quantity,
+    required this.pricePerKg,
+    required this.totalPrice,
+    this.message,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory Order.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Order(
+      id: doc.id,
+      productId: data['productId'] ?? '',
+      productName: data['productName'] ?? '',
+      sellerId: data['sellerId'] ?? '',
+      sellerName: data['sellerName'] ?? '',
+      buyerId: data['buyerId'] ?? '',
+      buyerName: data['buyerName'] ?? '',
+      buyerEmail: data['buyerEmail'],
+      quantity: (data['quantity'] ?? 0).toDouble(),
+      pricePerKg: (data['pricePerKg'] ?? 0).toDouble(),
+      totalPrice: (data['totalPrice'] ?? 0).toDouble(),
+      message: data['message'],
+      status: data['status'] ?? 'pending',
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'productId': productId,
+      'productName': productName,
+      'sellerId': sellerId,
+      'sellerName': sellerName,
+      'buyerId': buyerId,
+      'buyerName': buyerName,
+      'buyerEmail': buyerEmail,
+      'quantity': quantity,
+      'pricePerKg': pricePerKg,
+      'totalPrice': totalPrice,
+      'message': message,
+      'status': status,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
     };
   }
 }

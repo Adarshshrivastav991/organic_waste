@@ -151,12 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await Provider.of<AuthService>(context, listen: false).signOut();
-            },
-          ),
+          // Removed the logout button from here
         ],
       ),
       body: bodyContent,
